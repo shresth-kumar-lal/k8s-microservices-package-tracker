@@ -53,16 +53,6 @@ flowchart TB
     %% Observability Flow
     Prometheus -. "Scrapes Node/Pod Metrics" .-> NS_Default
     Grafana -- "PromQL Queries" --> Prometheus
-    
-    %% Styling
-    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
-    classDef k8s fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
-    classDef pod fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    classDef db fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-    
-    class NS_Default,NS_Monitor k8s;
-    class API_Pod1,API_Pod2 pod;
-    class DB_Pod db;
 ```
 
 - **Compute Tier (API):** A containerized Node.js/Express REST API. Configured with explicit Kubernetes CPU/Memory resource limits and HTTP readiness/liveness probes.
