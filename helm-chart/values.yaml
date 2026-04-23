@@ -1,0 +1,12 @@
+api:
+  replicaCount: 2
+  image: package-tracker-api:v1
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+db:
+  image: mongo:6.0
