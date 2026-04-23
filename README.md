@@ -10,33 +10,33 @@
 A highly available, two-tier microservices architecture deployed on Kubernetes using a custom Helm chart. This project demonstrates modern DevOps and Site Reliability Engineering (SRE) practices, including infrastructure templating, Zero-Downtime deployments, local Ingress routing, and enterprise-grade observability.
 
 ## ️Architecture Overview
-
 ```mermaid
 flowchart TB
     User([👤 User / cURL])
-    subgraph Cluster [☸️ Minikube Kubernetes Cluster]
+    
+    subgraph Cluster ["☸️ Minikube Kubernetes Cluster"]
         direction TB
         
         Ingress{{🌐 NGINX Ingress Controller<br/>packagetracker.local}}
         
-        subgraph NS_Default [Namespace: default (Application)]
+        subgraph NS_Default ["Namespace: default (Application)"]
             direction TB
             
             API_SVC[⚙️ Service: api-service<br/>ClusterIP: Port 80]
             DB_SVC[⚙️ Service: mongodb-service<br/>ClusterIP: Port 27017]
             
-            subgraph API_Deploy [Deployment: package-tracker-api]
+            subgraph API_Deploy ["Deployment: package-tracker-api"]
                 direction LR
                 API_Pod1(📦 Pod 1: Node.js API)
                 API_Pod2(📦 Pod 2: Node.js API)
             end
             
-            subgraph DB_Deploy [Deployment: mongodb]
+            subgraph DB_Deploy ["Deployment: mongodb"]
                 DB_Pod[(🗄️ Pod: MongoDB v6.0)]
             end
         end
         
-        subgraph NS_Monitor [Namespace: monitoring (Observability)]
+        subgraph NS_Monitor ["Namespace: monitoring (Observability)"]
             direction LR
             Prometheus((📈 Prometheus<br/>Metrics Scraper))
             Grafana([📊 Grafana<br/>Port-Forward: 3000])
