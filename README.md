@@ -1,5 +1,12 @@
 # Kubernetes Linux Package Tracker
 
+[![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![ArgoCD](https://img.shields.io/badge/ArgoCD-EF7B4D?style=for-the-badge&logo=argo&logoColor=white)](https://argoproj.github.io/cd/)
+[![HashiCorp Vault](https://img.shields.io/badge/Vault-000000?style=for-the-badge&logo=hashicorp&logoColor=white)](https://www.vaultproject.io/)
+[![Helm](https://img.shields.io/badge/Helm-0F1689?style=for-the-badge&logo=Helm&logoColor=white)](https://helm.sh/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=Prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/grafana-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com/)
+
 A small REST API for tracking Linux packages, used to demonstrate Kubernetes deployments, Helm, Argo CD GitOps, HashiCorp Vault secret injection, MongoDB authentication, and Prometheus metrics.
 
 ## Architecture
