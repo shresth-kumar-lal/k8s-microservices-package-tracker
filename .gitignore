@@ -1,0 +1,17 @@
+# Node.js
+app/node_modules/
+app/coverage/
+*.log
+npm-debug.log*
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

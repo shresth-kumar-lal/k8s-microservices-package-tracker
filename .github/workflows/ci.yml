@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        working-directory: app
+        run: npm install --no-audit --no-fund
+      - name: Check JavaScript syntax
+        working-directory: app
+        run: npm run check
+      - name: Run unit tests
+        working-directory: app
+        run: npm test
+      - name: Build container image
+        run: docker build -t package-tracker-api:ci ./app
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+      - name: Lint Helm chart
+        run: helm lint ./helm-chart
+      - name: Render Kubernetes manifests
+        run: helm template package-tracker ./helm-chart --namespace default > /tmp/rendered-manifests.yaml

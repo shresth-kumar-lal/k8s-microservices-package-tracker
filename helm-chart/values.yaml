@@ -1,12 +1,39 @@
 api:
   replicaCount: 2
-  image: package-tracker-api:v1
+  image: package-tracker-api:v1.1.0
+  imagePullPolicy: IfNotPresent
+  serviceAccountName: api-sa
   resources:
     requests:
-      cpu: "50m"
-      memory: "64Mi"
-    limits:
       cpu: "100m"
       memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  ingress:
+    enabled: true
+    className: nginx
+    host: packagetracker.local
+  vault:
+    role: package-tracker-role
+    secretPath: secret/data/package-tracker
+    secretFile: db-creds.json
+  metrics:
+    port: 9090
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      releaseLabel: monitoring
+
 db:
-  image: mongo:6.0
+  image: mongo:8.0.34
+  imagePullPolicy: IfNotPresent
+  rootCredentialsSecret: mongodb-root-credentials
+  storage: 2Gi
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"

@@ -1,190 +1,243 @@
-# K8s Microservices Package Tracker | GitOps & DevSecOps Architecture ☸️
+# Kubernetes Linux Package Tracker
 
-[![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![ArgoCD](https://img.shields.io/badge/ArgoCD-EF7B4D?style=for-the-badge&logo=argo&logoColor=white)](https://argoproj.github.io/cd/)
-[![HashiCorp Vault](https://img.shields.io/badge/Vault-000000?style=for-the-badge&logo=hashicorp&logoColor=white)](https://www.vaultproject.io/)
-[![Helm](https://img.shields.io/badge/Helm-0F1689?style=for-the-badge&logo=Helm&logoColor=white)](https://helm.sh/)
-[![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=Prometheus&logoColor=white)](https://prometheus.io/)
-[![Grafana](https://img.shields.io/badge/grafana-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com/)
+A small REST API for tracking Linux packages, used to demonstrate Kubernetes deployments, Helm, Argo CD GitOps, HashiCorp Vault secret injection, MongoDB authentication, and Prometheus metrics.
 
-A highly available, two-tier microservices architecture deployed on Kubernetes using strict **GitOps principles**. This project demonstrates modern Platform Engineering and Site Reliability Engineering (SRE) practices, including automated reconciliation via ArgoCD, dynamic secret injection via HashiCorp Vault, Zero-Downtime deployments, and enterprise-grade observability.
+> **Scope:** This is a local portfolio/lab project, not a production reference architecture. The database is a single replica, the Vault server is configured in development mode in the quick start, and the default Ingress uses plain HTTP. Do not expose this setup to the public internet.
 
-## Architecture & GitOps Flow
+## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph GitOps ["GitOps Workflow (Pull-Based)"]
-        Repo[(GitHub Repository)] -->|Pulls Manifests| ArgoCD((🐙 ArgoCD Controller))
-    end
-    
-    subgraph Cluster ["☸ Minikube Kubernetes Cluster"]
-        ArgoCD -->|Syncs State| NS_Default
-        Ingress{{🌐 NGINX Ingress Controller<br/>packagetracker.local}}
-        Vault([🔐 HashiCorp Vault]) -.->|Injects Secrets| API_Deploy
-        
-        subgraph NS_Default ["Namespace: default (Application)"]
-            direction TB
-            API_SVC[⚙ Service: api-service<br/>ClusterIP: Port 80]
-            DB_SVC[⚙ Service: mongodb-service<br/>ClusterIP: Port 27017]
-            
-            subgraph API_Deploy ["Deployment: package-tracker-api"]
-                API_Pod1(📦 Pod 1: Node.js API)
-                API_Pod2(📦 Pod 2: Node.js API)
-            end
-            
-            subgraph DB_Deploy ["Deployment: mongodb"]
-                DB_Pod[(🗄 Pod: MongoDB v6.0)]
-            end
-        end
-        
-        subgraph NS_Monitor ["Namespace: monitoring (Observability)"]
-            Prometheus((📈 Prometheus))
-            Grafana([📊 Grafana])
-        end
-    end
-
-    %% Network Traffic Flow
-    User([👤 cURL / Web]) -- "HTTP GET/POST" --> Ingress
-    Ingress -- "Route: /" --> API_SVC
-    API_SVC -. "Load Balances" .-> API_Pod1 & API_Pod2
-    API_Pod1 & API_Pod2 -- "MONGO_URI" --> DB_SVC
-    DB_SVC -. "Routes" .-> DB_Pod
-
-    %% Observability Flow
-    Prometheus -. "Scrapes Node/Pod Metrics" .-> NS_Default
-    Grafana -- "PromQL Queries" --> Prometheus
-
+  Git[(Git repository)] --> Argo[Argo CD]
+  Argo --> API[Node.js API x2]
+  Ingress[NGINX Ingress] --> API
+  API --> DB[(MongoDB with persistent volume)]
+  Vault[HashiCorp Vault] -. injects app URI .-> API
+  API -. internal metrics :9090 .-> Prom[Prometheus]
+  Grafana[Grafana] --> Prom
 ```
 
-* **GitOps Controller (ArgoCD):** ArgoCD continuously monitors this repository and automatically synchronizes the cluster state with the `main` branch.
-* **Secret Management (HashiCorp Vault):** MongoDB credentials are no longer hardcoded as plain-text environment variables. They are securely injected into the Kubernetes cluster deployment via Vault secrets.
-* **Compute Tier (API):** A containerized Node.js/Express REST API running as a non-root user. Configured with explicit CPU/Memory limits and HTTP readiness/liveness probes to enforce zero-downtime rolling upgrades.
-* **Observability Tier:** Integration with the `kube-prometheus-stack` to scrape metrics and visualize real-time resource consumption in Grafana.
+- **API:** Express 5, Mongoose, request validation, bounded pagination, readiness/liveness endpoints, and Prometheus metrics.
+- **Secrets:** The application MongoDB URI is injected from Vault into `/vault/secrets/db-creds.json`. The MongoDB bootstrap/admin credential is created as a Kubernetes Secret and must not be committed to Git. The application uses a separate MongoDB account with `readWrite` access only to the `packages` database.
+- **GitOps:** Argo CD reconciles the Helm chart from the `main` branch.
+- **Health checks:** `/livez` checks the process; `/readyz` checks database readiness. A database outage should make the API unready, not cause liveness-driven restart loops.
+- **Metrics:** The API serves Prometheus metrics on port `9090`, through a separate ClusterIP Service; the public Ingress only targets the HTTP service on port `3000`.
 
----
-## Engineering Challenges Overcome
+## Requirements
 
-Migrating from imperative Helm deployments to a declarative GitOps workflow surfaced several architectural challenges that required SRE-level troubleshooting:
+Install Docker, `kubectl`, Minikube, Helm, the Vault CLI, `openssl`, `curl`, and Git. Use a Linux host with enough resources for Minikube (4 CPUs and 6 GiB RAM is a reasonable starting point for this demo).
 
-* **Stateful Pod Initialization Race Conditions:** During automated ArgoCD syncs, the Node.js API pods were initializing faster than the MongoDB stateful backend, resulting in `CrashLoopBackOff` errors. **Solution:** Engineered strict HTTP `readinessProbe` and `livenessProbe` configurations in the API Helm chart with tuned `initialDelaySeconds` (15s) and `periodSeconds` (20s) to guarantee the database connection string resolved before the API began serving Ingress traffic.
-* **GitOps Secret Anti-Patterns:** A pull-based GitOps workflow means the repository is the single source of truth. However, storing the MongoDB connection URI in plain-text inside the `values.yaml` violated security compliance. **Solution:** Extracted hardcoded `env` variables and implemented a Kubernetes `Secret` manifest (`secret.yaml`), injecting the encoded payload into the deployment via `secretKeyRef`. This decoupled configuration from code and laid the groundwork for the HashiCorp Vault injector.
-* **ArgoCD Out-of-Sync Drift:** Initial manual `helm install` tests left residual state in the cluster. When ArgoCD was introduced, it detected an `OutOfSync` state and refused to overwrite the existing resources. **Solution:** Configured the `syncPolicy` in `application.yaml` with automated `prune: true` and `selfHeal: true` directives, allowing the ArgoCD controller to ruthlessly enforce the Git repository state and eliminate cluster drift.
+**MongoDB host-kernel note:** MongoDB's official documentation currently warns that some MongoDB 8.0 builds cannot start on Linux kernel versions 6.19 through 7.0.13; kernel 7.0.14 and later is listed as resolving that specific incompatibility. Check `uname -r` before running MongoDB in a container on a recent Tumbleweed kernel. See the [MongoDB 8.0 release notes](https://www.mongodb.com/docs/v8.0/release-notes/).
 
----
-## Quick Start & GitOps Deployment Guide
+## 1. Start Minikube and create a bootstrap credential
 
-### Prerequisites
-
-* `docker` & `kubectl`
-* `minikube` (with Ingress addon enabled)
-* `helm`
-
-### 1. Initialize Cluster & Build Image
-
-Start Minikube and build the API image directly into the cluster's internal Docker daemon:
+Use a fresh local Minikube cluster for the first run. **Do not reuse a MongoDB data directory initialized without authentication without first backing up and migrating it.** `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD` are only applied by the Mongo image during first-time initialization of an empty data directory.
 
 ```bash
-minikube start --addons=ingress
-eval $(minikube docker-env)
-cd app
-docker build -t package-tracker-api:v1 .
-cd ..
+minikube start --cpus=4 --memory=6144 --addons=ingress
 
+# Keep this shell open; the variable is used later to authenticate to MongoDB.
+MONGO_ROOT_PASSWORD="$(openssl rand -hex 24)"
+kubectl create secret generic mongodb-root-credentials \
+  --namespace default \
+  --from-literal=username=admin \
+  --from-literal=password="$MONGO_ROOT_PASSWORD"
+
+# Build directly into Minikube's image store (no registry required for this local demo).
+minikube image build -t package-tracker-api:v1.1.0 ./app
 ```
 
-### 2. Configure HashiCorp Vault Secrets
+If `mongodb-root-credentials` already exists, do not blindly delete or replace it. Confirm the MongoDB data directory's authentication state first.
 
-To ensure security compliance, deploy the base64-encoded Vault configurations:
+## 2. Install Vault for the local lab
+
+The following Vault configuration is intentionally **dev-only**: data is not a durable secrets backend, and the root token is `root`. Never use it for a shared or production cluster.
 
 ```bash
-kubectl apply -f helm-chart/templates/secret.yaml
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+helm install vault hashicorp/vault \
+  --set "server.dev.enabled=true" \
+  --set "injector.enabled=true"
 
+kubectl rollout status statefulset/vault --timeout=180s
 ```
 
-### 3. Deploy Infrastructure via GitOps (ArgoCD)
-
-This project utilizes a pull-based GitOps workflow. Install ArgoCD and apply the declarative application manifest to automatically synchronize the cluster with this repository:
+In a separate terminal, forward Vault locally:
 
 ```bash
-# Install ArgoCD into the cluster
+kubectl port-forward svc/vault 8200:8200
+```
+
+In the terminal you will use for Vault commands:
+
+```bash
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN='root'
+vault status
+```
+
+Configure Kubernetes authentication from inside the Vault pod so the Kubernetes API address is the in-cluster service address:
+
+```bash
+kubectl exec vault-0 -- sh -ec '
+  export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=root
+  vault auth enable kubernetes 2>/dev/null || true
+  vault write auth/kubernetes/config \
+    kubernetes_host="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+'
+```
+
+Generate a separate application password and store the URI in Vault. The hex password avoids characters that require percent-encoding inside a URI. Keep this shell open until you have created the MongoDB application user in step 5.
+
+```bash
+APP_DB_PASSWORD="$(openssl rand -hex 24)"
+vault kv put secret/package-tracker \
+  mongo_uri="mongodb://package_tracker:${APP_DB_PASSWORD}@mongodb-service:27017/packages?authSource=packages"
+
+vault policy write app-policy - <<'POLICY'
+path "secret/data/package-tracker" {
+  capabilities = ["read"]
+}
+POLICY
+
+vault write auth/kubernetes/role/package-tracker-role \
+  bound_service_account_names="api-sa" \
+  bound_service_account_namespaces="default" \
+  policies="app-policy" \
+  ttl="1h"
+```
+
+The application role can read only the one KV-v2 secret path. The Vault secret's key must be named `mongo_uri`, because the pod template renders that field into the JSON file consumed by the API.
+
+## 3. Install monitoring and Argo CD
+
+The chart's ServiceMonitor expects the Prometheus Operator CRD, so install the monitoring stack before syncing the application.
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace
+kubectl wait --for=condition=Established --timeout=180s \
+  crd/servicemonitors.monitoring.coreos.com
+
 kubectl create namespace argocd
-kubectl apply -n argocd -f [https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml](https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml)
-
-# Wait for ArgoCD server to spin up, then deploy the Application
+kubectl apply -n argocd -f \
+  https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl rollout status deployment/argocd-server -n argocd --timeout=180s
 kubectl apply -f application.yaml
-
 ```
 
-*Verify synchronization status:* `kubectl get application package-tracker -n argocd`
+Argo CD now reconciles the chart from the repository's `main` branch. Ensure the updated code and chart are committed and pushed before expecting GitOps to deploy these fixes. Check status with:
 
-### 4. Configure Local DNS
+```bash
+kubectl get applications -n argocd
+kubectl get pods,svc,ingress,pvc
+```
 
-Map the local domain to your Minikube cluster IP:
+## 4. Create the least-privilege MongoDB application user
+
+Wait for MongoDB to initialize and become ready:
+
+```bash
+kubectl rollout status deployment/mongodb --timeout=180s
+```
+
+Then create an application user with access only to the `packages` database. This command reads the root username/password from the pod's environment and sends the application password from the current shell to `mongosh` through standard input; the password is not written into a manifest.
+
+```bash
+kubectl exec -i deployment/mongodb -- /bin/sh -ec \
+  'mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" \
+    --password "$MONGO_INITDB_ROOT_PASSWORD" \
+    --authenticationDatabase admin' <<EOF
+const appPassword = "${APP_DB_PASSWORD}";
+const appDb = db.getSiblingDB("packages");
+appDb.createUser({
+  user: "package_tracker",
+  pwd: appPassword,
+  roles: [{ role: "readWrite", db: "packages" }]
+});
+EOF
+```
+
+If you rerun this command, MongoDB will report that the user already exists. Do not delete the PVC just to rerun setup unless this is disposable lab data; update the existing user's password intentionally if needed.
+
+Wait for the API pods to become ready:
+
+```bash
+kubectl rollout status deployment/package-tracker-api --timeout=180s
+kubectl get pods
+```
+
+## 5. Access the API
+
+Map the local Ingress hostname to Minikube's IP:
 
 ```bash
 echo "$(minikube ip) packagetracker.local" | sudo tee -a /etc/hosts
-
 ```
 
----
-
-## API Usage
-
-The API is exposed securely through the Kubernetes Ingress Controller.
-
-**Add a new package (POST):**
+Create a package and list packages:
 
 ```bash
-curl -X POST [http://packagetracker.local/api/packages](http://packagetracker.local/api/packages) \
--H "Content-Type: application/json" \
--d '{"name": "htop", "manager": "zypper", "description": "Interactive process viewer"}'
+curl -i http://packagetracker.local/api/packages \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"htop","manager":"zypper","description":"Interactive process viewer"}'
 
+curl -i 'http://packagetracker.local/api/packages?page=1&pageSize=20'
+curl -i http://packagetracker.local/readyz
+curl -i http://packagetracker.local/livez
 ```
 
-**Retrieve all packages (GET):**
+`POST /api/packages` returns `400` for missing/invalid fields and unknown properties. `GET /api/packages` supports `page` and `pageSize` (maximum `100`) and returns pagination metadata with the documents.
+
+The Ingress is local HTTP only. Do not point a public DNS name at it without adding TLS, authentication, and an appropriate network/security policy.
+
+## 6. Verify observability
+
+The metrics listener is not exposed through the public Ingress. Check the metrics service from your local machine using port-forwarding:
 
 ```bash
-curl [http://packagetracker.local/api/packages](http://packagetracker.local/api/packages)
-
+kubectl port-forward svc/package-tracker-metrics 9090:9090
+curl http://127.0.0.1:9090/metrics
 ```
 
----
+Prometheus should discover the `package-tracker-api` ServiceMonitor in the `monitoring` namespace. In Prometheus, query `http_requests_total` and `http_request_duration_seconds_bucket` after making several API requests. Use Grafana to inspect Kubernetes resource dashboards and add an application dashboard using these metrics.
 
-## Enterprise Observability (Prometheus & Grafana)
-
-**1. Deploy the Monitoring Stack:**
+## 7. Local development and tests
 
 ```bash
-helm repo add prometheus-community [https://prometheus-community.github.io/helm-charts](https://prometheus-community.github.io/helm-charts)
-helm repo update
-helm install monitoring prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace
-
+cd app
+npm install
+npm test
+npm run check
 ```
 
-**2. Access the Grafana Dashboard:**
-Extract the dynamically generated admin password:
+`npm install` generates `package-lock.json` if it is not present. Commit that lockfile and use `npm ci` in Docker/CI for repeatable dependency resolution; do not leave dependency resolution unpinned for a portfolio release.
+
+Validate the Helm chart before pushing:
 
 ```bash
-kubectl get secret --namespace monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
-
+helm lint ./helm-chart
+helm template package-tracker ./helm-chart --namespace default
 ```
 
-Port-forward Grafana to your local machine:
+## Limitations to document honestly
 
-```bash
-kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80
-
-```
-
-Open `http://localhost:3000` in your browser (Username: `admin`). Navigate to **Dashboards -> Kubernetes / Compute Resources / Namespace (Pods)** to view live utilization metrics for the `default` namespace.
-
----
+- The MongoDB Deployment has one replica. A PVC provides persistence, not database high availability or backup.
+- The Vault `dev` server is ephemeral and is only for a laptop demo.
+- The MongoDB root credential lives in a Kubernetes Secret; restrict RBAC and do not commit secret values. Only the API connection URI is injected from Vault in this demo.
+- The sample Ingress serves HTTP and the API does not implement user authentication; keep it on a trusted local cluster.
+- The project demonstrates rolling-update configuration, but claim zero downtime only after testing it while requests are continuously sent.
 
 ## Cleanup
 
 ```bash
 kubectl delete -f application.yaml
 helm uninstall monitoring -n monitoring
+helm uninstall vault
 minikube stop
-
 ```
+
+The PVC has a keep policy to reduce the risk of deleting MongoDB data during chart cleanup. Inspect `kubectl get pvc` and delete `mongodb-pvc` manually only when you intentionally want to destroy the local lab database.
