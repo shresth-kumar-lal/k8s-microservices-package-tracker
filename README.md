@@ -2,8 +2,6 @@
 
 A small REST API for tracking Linux packages, used to demonstrate Kubernetes deployments, Helm, Argo CD GitOps, HashiCorp Vault secret injection, MongoDB authentication, and Prometheus metrics.
 
-> **Scope:** This is a local portfolio/lab project, not a production reference architecture. The database is a single replica, the Vault server is configured in development mode in the quick start, and the default Ingress uses plain HTTP. Do not expose this setup to the public internet.
-
 ## Architecture
 
 ```mermaid
